@@ -1,0 +1,59 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.aak.flink;
+
+import com.aak.flink.events.MonitoringEvent;
+import com.aak.flink.events.TemperatureEvent;
+import com.aak.flink.eventsource.MonitoringEventSource;
+import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.IngestionTimeExtractor;
+
+public class StreamingJob {
+
+	private static final int MAX_RACK_ID = 10;
+	private static final long PAUSE = 100;
+	private static final double TEMPERATURE_RATIO = 0.5;
+	private static final double POWER_STD = 10;
+	private static final double POWER_MEAN = 100;
+	private static final double TEMP_STD = 20;
+	private static final double TEMP_MEAN = 80;
+
+	public static void main(String[] args) throws Exception {
+		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+		// Use ingestion time => TimeCharacteristic == EventTime + IngestionTimeExtractor
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+
+		// Input stream of monitoring events
+		DataStream<MonitoringEvent> inputEventStream = env
+				.addSource(new MonitoringEventSource(
+						MAX_RACK_ID,
+						PAUSE,
+						TEMPERATURE_RATIO,
+						POWER_STD,
+						POWER_MEAN,
+						TEMP_STD,
+						TEMP_MEAN))
+				.assignTimestampsAndWatermarks(new IngestionTimeExtractor<>());
+		inputEventStream.print();
+		env.execute("Flink Streaming Java API Skeleton");
+	}
+}

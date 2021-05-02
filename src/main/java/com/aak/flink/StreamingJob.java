@@ -19,8 +19,15 @@
 package com.aak.flink;
 
 import com.aak.flink.events.MonitoringEvent;
+import com.aak.flink.events.TemperatureAlert;
 import com.aak.flink.events.TemperatureEvent;
+import com.aak.flink.events.TemperatureWarning;
 import com.aak.flink.eventsource.MonitoringEventSource;
+import com.aak.flink.patterns.Patterns;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.cep.CEP;
+import org.apache.flink.cep.PatternSelectFunction;
+import org.apache.flink.cep.PatternStream;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -42,7 +49,7 @@ public class StreamingJob {
 		// Use ingestion time => TimeCharacteristic == EventTime + IngestionTimeExtractor
 		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
-		// Input stream of monitoring events
+		// Input stream of monitoring events created using the monitoring source.
 		DataStream<MonitoringEvent> inputEventStream = env
 				.addSource(new MonitoringEventSource(
 						MAX_RACK_ID,
@@ -53,7 +60,31 @@ public class StreamingJob {
 						TEMP_STD,
 						TEMP_MEAN))
 				.assignTimestampsAndWatermarks(new IngestionTimeExtractor<>());
-		inputEventStream.print();
+
+		PatternStream<MonitoringEvent> monitoringEventPatternStream = CEP.pattern(
+				inputEventStream.keyBy(MonitoringEvent::getRackID), Patterns.warningPattern);
+
+		DataStream<TemperatureWarning> warningDataStream = monitoringEventPatternStream.select(
+				(PatternSelectFunction<MonitoringEvent, TemperatureWarning>) pattern -> {
+			TemperatureEvent firstEvent = (TemperatureEvent) pattern.get(Patterns.firstEventInMonitoringPattern).get(0);
+			TemperatureEvent secondEvent = (TemperatureEvent) pattern.get(Patterns.secondEventInMonitoringPattern).get(0);
+			return new TemperatureWarning(firstEvent.getRackID(), (firstEvent.getTemperature() + secondEvent.getTemperature())/2);
+		});
+
+		PatternStream<TemperatureWarning> temperatureAlertPatternStream = CEP.pattern(warningDataStream
+				.keyBy((KeySelector<TemperatureWarning, Integer>) TemperatureWarning::getRackId), Patterns.alertPattern);
+
+		DataStream<TemperatureAlert> alertDataStream = temperatureAlertPatternStream.select(
+				(PatternSelectFunction<TemperatureWarning, TemperatureAlert>) pattern -> {
+					TemperatureWarning firstWarning = pattern.get(Patterns.firstWarning).get(0);
+					TemperatureWarning secondWarning = pattern.get(Patterns.secondWarning).get(0);
+					return new TemperatureAlert(firstWarning.getRackId(),
+							(firstWarning.getTemperatureAvg() + secondWarning.getTemperatureAvg())/2);
+				});
+
+		alertDataStream.print();
+
+
 		env.execute("Flink Streaming Java API Skeleton");
 	}
 }

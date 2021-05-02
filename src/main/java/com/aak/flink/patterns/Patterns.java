@@ -11,14 +11,22 @@ public class Patterns {
 
     private static final double TEMPERATURE_THRESHOLD = 100;
 
-    Pattern<MonitoringEvent, ?> warningPattern = Pattern.<MonitoringEvent>begin("first event")
+    public static final String firstEventInMonitoringPattern = "firstEvent";
+
+    public static final String secondEventInMonitoringPattern = "secondEvent";
+
+    public static final String firstWarning = "firstWarning";
+
+    public static final String secondWarning = "secondWarning";
+
+    public static Pattern<MonitoringEvent, ?> warningPattern = Pattern.<MonitoringEvent>begin(firstEventInMonitoringPattern)
             .subtype(TemperatureEvent.class)
             .where(new IterativeCondition<TemperatureEvent>() {
                 @Override
                 public boolean filter(TemperatureEvent value, Context<TemperatureEvent> ctx) throws Exception {
                     return value.getTemperature() >= TEMPERATURE_THRESHOLD;
                 }
-            }).next("second event")
+            }).next(secondEventInMonitoringPattern)
             .subtype(TemperatureEvent.class)
             .where(new IterativeCondition<TemperatureEvent>() {
                 @Override
@@ -27,7 +35,7 @@ public class Patterns {
                 }
             }).within(Time.seconds(10));
 
-    Pattern<TemperatureWarning, ?> alertPattern = Pattern.<TemperatureWarning>begin("first")
-            .next("second")
+    public static Pattern<TemperatureWarning, ?> alertPattern = Pattern.<TemperatureWarning>begin(firstWarning)
+            .next(secondWarning)
             .within(Time.seconds(10));
 }
